@@ -48,6 +48,11 @@ archives:
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
+  # The registry requires the manifest's checksum to be in SHA256SUMS too, not just
+  # the archives — so hash it under the same per-release name used in release.extra_files.
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
 
 signs:
   - artifacts: checksum
