@@ -20,6 +20,11 @@ type Client struct {
 	userAgent  string
 }
 
+// namespace is the reserved URL prefix under which torii serves its own admin
+// UI and API. All other paths are proxied to backing services, so the admin
+// API endpoints must be addressed under this prefix.
+const namespace = "/_torii"
+
 type Option func(*Client)
 
 func WithHTTPClient(c *http.Client) Option { return func(cl *Client) { cl.httpClient = c } }
@@ -33,6 +38,10 @@ func New(endpoint, apiToken string, opts ...Option) (*Client, error) {
 	if _, err := url.Parse(endpoint); err != nil {
 		return nil, fmt.Errorf("torii: invalid endpoint: %w", err)
 	}
+	// The admin API lives under torii's reserved namespace. Append it here so
+	// callers can configure the bare server URL. Tolerate an endpoint that
+	// already includes the namespace so it is never doubled.
+	endpoint = strings.TrimSuffix(endpoint, namespace) + namespace
 	if apiToken == "" {
 		return nil, errors.New("torii: api_token is required")
 	}
