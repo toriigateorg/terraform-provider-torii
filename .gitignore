@@ -3,3 +3,6 @@ terraform-provider-torii
 *.tfstate.backup
 .terraform/
 .terraform.lock.hcl
+dist/
+.cache/
+.envrc

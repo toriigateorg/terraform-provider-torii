@@ -1,0 +1,88 @@
+# goreleaser v2 config for terraform-provider-torii
+# Produces the exact artifact set the Terraform Registry ingests from a GitHub release:
+#   terraform-provider-torii_<ver>_<os>_<arch>.zip
+#   terraform-provider-torii_<ver>_SHA256SUMS
+#   terraform-provider-torii_<ver>_SHA256SUMS.sig
+#   terraform-provider-torii_<ver>_manifest.json
+version: 2
+
+project_name: terraform-provider-torii
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - "-s -w -X main.version={{ .Version }}"
+    # Reproducible builds: stamp binary mtime from the commit, not the build clock.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    # The registry requires the binary to be named terraform-provider-torii_vX.Y.Z
+    binary: "{{ .ProjectName }}_v{{ .Version }}"
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - arm
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+
+archives:
+  - formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+    args:
+      # GPG detached, binary .sig signature of the SHA256SUMS file, using the key
+      # identified by GPG_FINGERPRINT. Signing runs inside the release container
+      # (see justfile) against the mounted ~/.gnupg, so we use loopback pinentry
+      # for non-interactive signing. Pass GPG_PASSWORD for a passphrase-protected
+      # key; leave it empty for a passphrase-less signing key.
+      - "--batch"
+      - "--pinentry-mode"
+      - "loopback"
+      - "--passphrase"
+      - "{{ .Env.GPG_PASSWORD }}"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+release:
+  extra_files:
+    # The registry reads protocol versions from this manifest, named per-release.
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge branch
