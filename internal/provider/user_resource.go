@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,6 +29,7 @@ type userModel struct {
 	FirstName types.String `tfsdk:"first_name"`
 	LastName  types.String `tfsdk:"last_name"`
 	Password  types.String `tfsdk:"password"`
+	SsoOnly   types.Bool   `tfsdk:"sso_only"`
 }
 
 func (r *userResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -57,9 +59,16 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace(), stringplanmodifier.UseStateForUnknown()},
 			},
 			"password": schema.StringAttribute{
-				Required:    true,
+				Optional:    true,
 				Sensitive:   true,
-				Description: "User password. Write-only: never returned by the API, so drift in this field cannot be detected.",
+				Description: "User password. Required unless sso_only = true. Write-only: never returned by the API, so drift in this field cannot be detected.",
+			},
+			"sso_only": schema.BoolAttribute{
+				Optional: true,
+				Computed: true,
+				Description: "Create the account with no password so it can only sign in through an SSO " +
+					"provider. Conflicts with password. Defaults to false. Forces replacement when changed.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplace(), boolplanmodifier.UseStateForUnknown()},
 			},
 		},
 	}
@@ -83,6 +92,7 @@ func setUserState(m *userModel, u *client.User) {
 	m.Email = types.StringValue(u.Email)
 	m.FirstName = types.StringValue(u.FirstName)
 	m.LastName = types.StringValue(u.LastName)
+	m.SsoOnly = types.BoolValue(u.SsoOnly)
 }
 
 func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -91,12 +101,23 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	ssoOnly := plan.SsoOnly.ValueBool()
+	hasPassword := !plan.Password.IsNull() && plan.Password.ValueString() != ""
+	switch {
+	case ssoOnly && hasPassword:
+		resp.Diagnostics.AddError("invalid user", "password must not be set when sso_only = true")
+		return
+	case !ssoOnly && !hasPassword:
+		resp.Diagnostics.AddError("invalid user", "password is required unless sso_only = true")
+		return
+	}
 	out, err := r.c.CreateUser(ctx, client.UserCreate{
 		Username:  plan.Username.ValueString(),
 		Email:     strings.ToLower(plan.Email.ValueString()),
 		Password:  plan.Password.ValueString(),
 		FirstName: plan.FirstName.ValueString(),
 		LastName:  plan.LastName.ValueString(),
+		SsoOnly:   ssoOnly,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("create user failed", err.Error())
@@ -134,6 +155,14 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	// An sso_only account has no password; setting one would silently un-SSO it
+	// server-side while state still claims sso_only. Reject instead. Flipping
+	// sso_only itself forces replacement (RequiresReplace), so it never reaches
+	// Update.
+	if plan.SsoOnly.ValueBool() && plan.Password.ValueString() != "" {
+		resp.Diagnostics.AddError("invalid user", "password must not be set when sso_only = true")
 		return
 	}
 	// Only password is mutable in place; every other field forces replacement.

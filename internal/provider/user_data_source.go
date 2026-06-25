@@ -24,6 +24,7 @@ type userDataModel struct {
 	FirstName   types.String `tfsdk:"first_name"`
 	LastName    types.String `tfsdk:"last_name"`
 	Permissions types.Set    `tfsdk:"permissions"`
+	SsoOnly     types.Bool   `tfsdk:"sso_only"`
 }
 
 func (d *userDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -43,6 +44,10 @@ func (d *userDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Computed:    true,
 				ElementType: types.StringType,
 				Description: "Effective permissions the user has via their roles.",
+			},
+			"sso_only": schema.BoolAttribute{
+				Computed:    true,
+				Description: "Whether the account has no password and can only sign in via SSO.",
 			},
 		},
 	}
@@ -108,6 +113,7 @@ func (d *userDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		FirstName:   types.StringValue(user.FirstName),
 		LastName:    types.StringValue(user.LastName),
 		Permissions: pv,
+		SsoOnly:     types.BoolValue(user.SsoOnly),
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &out)...)
 }
