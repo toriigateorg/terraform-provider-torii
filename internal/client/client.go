@@ -99,5 +99,29 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("torii: read response body from %s %s: %w", method, req.URL, err)
+	}
+	if err := json.Unmarshal(bodyBytes, out); err != nil {
+		ct := resp.Header.Get("Content-Type")
+		return fmt.Errorf(
+			"torii: expected JSON response from %s %s but got status %d (Content-Type %q): %w; body: %s",
+			method, req.URL, resp.StatusCode, ct, err, bodySnippet(bodyBytes),
+		)
+	}
+	return nil
+}
+
+// bodySnippet returns a trimmed, length-limited view of a response body for
+// inclusion in error messages, so callers can see when an endpoint returned
+// HTML or some other non-JSON payload instead of the expected data.
+func bodySnippet(b []byte) string {
+	const max = 256
+	s := strings.TrimSpace(string(b))
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
