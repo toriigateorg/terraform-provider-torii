@@ -26,7 +26,7 @@ type serviceDataModel struct {
 	Headers           types.Map    `tfsdk:"headers"`
 	PreserveHost      types.Bool   `tfsdk:"preserve_host"`
 	PassthroughErrors types.Bool   `tfsdk:"passthrough_errors"`
-	MaxBodySize       types.Int64  `tfsdk:"max_body_size"`
+	MaxBodySizeMB     types.Int64  `tfsdk:"max_body_size_mb"`
 	ReadTimeoutSecs   types.Int64  `tfsdk:"read_timeout_secs"`
 	WriteTimeoutSecs  types.Int64  `tfsdk:"write_timeout_secs"`
 	DialTimeoutSecs   types.Int64  `tfsdk:"dial_timeout_secs"`
@@ -53,7 +53,7 @@ func (d *serviceDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 			},
 			"preserve_host":      schema.BoolAttribute{Computed: true},
 			"passthrough_errors": schema.BoolAttribute{Computed: true},
-			"max_body_size":      schema.Int64Attribute{Computed: true},
+			"max_body_size_mb":   schema.Int64Attribute{Computed: true, Description: "Maximum request body size in MiB (0 = unlimited)."},
 			"read_timeout_secs":  schema.Int64Attribute{Computed: true},
 			"write_timeout_secs": schema.Int64Attribute{Computed: true},
 			"dial_timeout_secs":  schema.Int64Attribute{Computed: true},
@@ -115,7 +115,7 @@ func (d *serviceDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		Domain:            types.StringValue(svc.Domain),
 		PreserveHost:      types.BoolValue(svc.PreserveHost),
 		PassthroughErrors: types.BoolValue(svc.PassthroughErrors),
-		MaxBodySize:       types.Int64Value(svc.MaxBodySize),
+		MaxBodySizeMB:     types.Int64Value(svc.MaxBodySize / bytesPerMiB),
 		ReadTimeoutSecs:   types.Int64Value(int64(svc.ReadTimeoutSecs)),
 		WriteTimeoutSecs:  types.Int64Value(int64(svc.WriteTimeoutSecs)),
 		DialTimeoutSecs:   types.Int64Value(int64(svc.DialTimeoutSecs)),

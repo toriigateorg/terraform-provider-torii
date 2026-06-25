@@ -17,6 +17,14 @@ import (
 	"github.com/toriigateorg/torii/terraform-provider/internal/client"
 )
 
+// max_body_size_mb is expressed in MiB for ergonomics but the torii API takes
+// raw bytes, so the provider converts on the way in and out. The ceiling
+// mirrors the server's 5 GiB cap (admin_services.go: maxBodySizeCeiling).
+const (
+	bytesPerMiB          = 1 << 20
+	maxBodySizeCeilingMB = (5 << 30) / bytesPerMiB
+)
+
 type serviceResource struct {
 	c *client.Client
 }
@@ -32,7 +40,7 @@ type serviceModel struct {
 	Headers           types.Map    `tfsdk:"headers"`
 	PreserveHost      types.Bool   `tfsdk:"preserve_host"`
 	PassthroughErrors types.Bool   `tfsdk:"passthrough_errors"`
-	MaxBodySize       types.Int64  `tfsdk:"max_body_size"`
+	MaxBodySizeMB     types.Int64  `tfsdk:"max_body_size_mb"`
 	ReadTimeoutSecs   types.Int64  `tfsdk:"read_timeout_secs"`
 	WriteTimeoutSecs  types.Int64  `tfsdk:"write_timeout_secs"`
 	DialTimeoutSecs   types.Int64  `tfsdk:"dial_timeout_secs"`
@@ -77,10 +85,10 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Description:   "Pass upstream 5xx responses through unchanged. Defaults to true.",
 				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
-			"max_body_size": schema.Int64Attribute{
+			"max_body_size_mb": schema.Int64Attribute{
 				Optional:      true,
 				Computed:      true,
-				Description:   "Maximum request body size in bytes. Defaults to 1048576 (1 MiB).",
+				Description:   fmt.Sprintf("Maximum request body size in MiB, 0-%d (0 = unlimited). Defaults to 1 MiB. Sent to the API as bytes.", maxBodySizeCeilingMB),
 				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"read_timeout_secs": schema.Int64Attribute{
@@ -140,8 +148,12 @@ func (m *serviceModel) toWrite(ctx context.Context) (client.ServiceWrite, error)
 		v := m.PassthroughErrors.ValueBool()
 		w.PassthroughErrors = &v
 	}
-	if !m.MaxBodySize.IsNull() && !m.MaxBodySize.IsUnknown() {
-		v := m.MaxBodySize.ValueInt64()
+	if !m.MaxBodySizeMB.IsNull() && !m.MaxBodySizeMB.IsUnknown() {
+		mb := m.MaxBodySizeMB.ValueInt64()
+		if mb < 0 || mb > maxBodySizeCeilingMB {
+			return client.ServiceWrite{}, fmt.Errorf("max_body_size_mb must be between 0 and %d", maxBodySizeCeilingMB)
+		}
+		v := mb * bytesPerMiB
 		w.MaxBodySize = &v
 	}
 	if !m.ReadTimeoutSecs.IsNull() && !m.ReadTimeoutSecs.IsUnknown() {
@@ -176,7 +188,7 @@ func setServiceState(ctx context.Context, m *serviceModel, s *client.Service) er
 	m.Headers = hv
 	m.PreserveHost = types.BoolValue(s.PreserveHost)
 	m.PassthroughErrors = types.BoolValue(s.PassthroughErrors)
-	m.MaxBodySize = types.Int64Value(s.MaxBodySize)
+	m.MaxBodySizeMB = types.Int64Value(s.MaxBodySize / bytesPerMiB)
 	m.ReadTimeoutSecs = types.Int64Value(int64(s.ReadTimeoutSecs))
 	m.WriteTimeoutSecs = types.Int64Value(int64(s.WriteTimeoutSecs))
 	m.DialTimeoutSecs = types.Int64Value(int64(s.DialTimeoutSecs))
