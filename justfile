@@ -83,6 +83,17 @@ release KIND="patch":
         exit 1
     fi
 
+    # --- fail fast on release credentials BEFORE we tag/push (publish re-validates fully) ---
+    if [[ -z "${GPG_FINGERPRINT:-}" ]]; then
+        echo "ERROR: GPG_FINGERPRINT is unset. Export it before releasing:" >&2
+        echo "       export GPG_FINGERPRINT=\$(gpg --list-secret-keys --with-colons <key-email> | awk -F: '/^fpr:/{print \$10; exit}')" >&2
+        exit 1
+    fi
+    if [[ -z "${GITHUB_TOKEN:-}" ]] && ! gh auth token >/dev/null 2>&1; then
+        echo "ERROR: no GITHUB_TOKEN and 'gh auth token' failed. Run 'gh auth login' or export GITHUB_TOKEN." >&2
+        exit 1
+    fi
+
     # --- bump version ---
     kind="{{ KIND }}"
     cur="$(cat VERSION)"
