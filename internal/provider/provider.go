@@ -92,6 +92,8 @@ func (p *toriiProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewUserResource,
 		NewUserRoleResource,
 		NewSSOProviderResource,
+		NewAPIUserResource,
+		NewAPIUserRoleResource,
 	}
 }
 
