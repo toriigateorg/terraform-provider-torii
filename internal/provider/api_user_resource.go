@@ -84,9 +84,10 @@ func (r *apiUserResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"token": schema.StringAttribute{
 				Computed:   true,
 				Sensitive:  true,
-				Description: "The plaintext bearer token (torii_sat_...). Pass it as `Authorization: Bearer` " +
-					"or in the `X-Torii-Service-Token` header. Only known after create; the API never " +
-					"returns it again.",
+				Description: "The plaintext service token (torii_sat_...). Present it in the " +
+					"`X-Torii-Service-Token` header to reach a service through the torii proxy; the " +
+					"standard `Authorization` header is left untouched for the upstream's own auth. " +
+					"Only known after create; the API never returns it again.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 		},

@@ -79,7 +79,10 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	// torii reads its control-plane credential from X-Torii-Authorization (the
+	// standard Authorization header is reserved for upstream services behind the
+	// proxy). The value is the raw token, with no "Bearer " prefix.
+	req.Header.Set("X-Torii-Authorization", c.apiToken)
 	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
